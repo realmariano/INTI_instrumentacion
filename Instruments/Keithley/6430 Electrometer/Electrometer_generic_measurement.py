@@ -31,7 +31,9 @@ Requirements:
     - Python 3.x
     - pyvisa library
 """
-
+import math
+import matplotlib.ticker as ticker
+import matplotlib.pyplot as plt
 import os
 import pyvisa
 import time
@@ -39,7 +41,8 @@ from datetime import datetime
 import winsound
 
 print("\n")
-
+measurement_time = 5 # Time between measurements in seconds
+number_of_measurements = 4  # Number of measurements to take per range
 index = 0   #  0=voltage, 1=current, 2=resistance
 
 #index = int(input("Enter 0 for voltage, 1 for current, 2 for resistance: "))
@@ -62,8 +65,12 @@ output_file = open(os.path.join(script_dir, file_name), 'w')
 
 
 # Create file to save results
-#output_file = open('C:\\Users\\lvillegas\\Documents\\Calibrator_Electrometer\\Electrometer\\' + file_name, 'w')
-output_file.write('Range (A)\tReading 1\tReading 2\tReading 3\tReading 4\tReading 5\tReading 6\tReading 7\tReading 8\tReading 9\tReading 10\n')
+header = "Range (A)"
+for i in range(1, number_of_measurements + 1):
+    header += f"\tReading {i}"
+
+# Escribir en el archivo con salto de línea
+output_file.write(header + "\n")
 
 # Connect to the instrument
 rm = pyvisa.ResourceManager()
@@ -76,6 +83,9 @@ Keithley.read_termination = '\n'
 
 #Keithley.write(':SENS:VOLT:PROT 21')   # Current protection at 100 mA
 Keithley.write(':OUTP ON')              # Enable output
+Keithley.write(':SENS:'+ parameter + ':NPLC 10')         # Number of power line cycles (NPLC) for current measurement       
+
+
 
 values_float = []
 rango= Keithley.query(':SENS:{}:RANG?'.format(parameter)) 
@@ -83,8 +93,9 @@ print('Range:', rango.strip())
 output_file.write(rango.strip())
 
 
-print("\nTaking 10 measurements, one every 5 seconds...\n")
-for i in range(10):
+print("\nTaking " + str(number_of_measurements) + " measurements, one every 5 seconds...\n")
+for i in range(number_of_measurements):
+    time.sleep(measurement_time)
     reading = Keithley.query(':READ?')
     print(f'Reading #{i+1}:', reading.strip())
 
@@ -101,12 +112,34 @@ for i in range(10):
     else:
         print('  Could not extract the current.')
 
-    time.sleep(5)
+    
 
-# Average
 if values_float:
+    # Proaverage
     avg = sum(values_float) / len(values_float)
+    
+    # stabdard deviation
+    variance = sum((x - avg) ** 2 for x in values_float) / (len(values_float) - 1)
+    std_dev = math.sqrt(variance)
+    
     print('\nAverage value: {:.6E}'.format(avg) + ' {0}'.format(units))
+    print('Standard deviation: {:.6E}'.format(std_dev) + ' {0}'.format(units))
+    
+    # === Gráfico ===
+    plt.figure()
+    plt.plot(values_float, marker='o', linestyle='', label="Measurements")
+    plt.axhline(avg, color='red', linestyle='--', label="average")
+    plt.title(" Measurements over sample number")
+    plt.xlabel("Sample Number")
+    plt.ylabel("Value ({})".format(units))
+    
+    plt.gca().yaxis.set_major_formatter(
+    ticker.FuncFormatter(lambda x, pos: f"{x:.10f}")  # 10 decimales
+)
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
 else:
     print('\nNot enough data to calculate average.')
 
